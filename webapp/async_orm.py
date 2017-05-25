@@ -26,6 +26,7 @@ async def create_pool(loop, **kw):
 		host=kw.get('host', 'localhost'),
 		port=kw.get('port', 3306),
 		user=kw['user'],
+		password=kw['password'],
 		db=kw['db'],
 		charset=kw.get('charset', 'utf8'),
 		autocommit=kw.get('autocommit', True),
@@ -52,6 +53,7 @@ async def select(sql, args, size=None):
 # 通用的execute()执行INSERT、UPDATE、DELETE语句
 async def execute(sql, args, autocommit=True):
 	log(sql)
+	global __pool
 	async with __pool.get() as conn:
 		if not autocommit:
 			await conn.begin()
@@ -127,19 +129,20 @@ class ModelMetaclass(type):
 		logging.info('found model: {} (table: {})'.format(name, table_name))
 		mappings = dict()
 		fields = []
+		primary_key = None
 		for key, value in attrs.items():
 			if isinstance(value, Field):
 				logging.info(' found mapping: {} ==> {}'.format(key, value))
 				mappings[key] = value
 				if value.primary_key:
 					if primary_key:
-						raise AttributeError('Duplicate primary key for field: {}'.format(key))
+						raise Exception('Duplicate primary key for field: {}'.format(key))
 					primary_key = key
 				else:
 					fields.append(key)
 
 		if not primary_key:
-			raise AttributeError('Primary key not found.')
+			raise Exception('Primary key not found.')
 
 		for k in mappings.keys():
 			attrs.pop(k)
@@ -153,7 +156,7 @@ class ModelMetaclass(type):
 		attrs['__insert__'] = 'insert into `%s` (%s, `%s`) values (%s)' % (table_name, ', '.join(escaped_fields), primary_key, create_args_string(len(escaped_fields) + 1))
 		attrs['__update__'] = 'update `%s` set %s where `%s`=?' % (table_name, ', '.join(map(lambda f: '`%s`=?' % (mappings.get(f).name or f), fields)), primary_key)
 		attrs['__delete__'] = 'delete from `%s` where `%s`=?' % (table_name, primary_key)
-		return type.__new__(classmethod, name, bases, attrs)
+		return type.__new__(cls, name, bases, attrs)
 
 
 class Model(dict, metaclass=ModelMetaclass):
