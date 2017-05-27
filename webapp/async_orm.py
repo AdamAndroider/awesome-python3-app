@@ -1,12 +1,12 @@
 import logging
 import aiomysql
 
-
 __author__ = 'Adam Lee'
 
+'''ORM操作数据库
 '''
-orm 操作数据库
-'''
+
+logging.basicConfig(level=logging.INFO)
 
 
 # 统一调用的log方法
@@ -35,6 +35,14 @@ async def create_pool(loop, **kw):
 	)
 
 
+# 销毁连接池
+async def destroy_pool():
+	global __pool
+	if __pool is not None:
+		__pool.close()
+		await __pool.wait_closed()
+
+
 # 执行SELECT语句，完成查找 sql是sql语句
 async def select(sql, args, size=None):
 	log(sql)
@@ -61,12 +69,14 @@ async def execute(sql, args, autocommit=True):
 			async with conn.cursor(aiomysql.DictCursor) as cursor:
 				await cursor.execute(sql.replace('?', '%s'), args)
 				affected = cursor.rowcount
-				if not autocommit:
-					await conn.commit()
-		except:
+			if not autocommit:
+				await conn.commit()
+		except Exception:
 			if not autocommit:
 				await conn.rollback()
 			raise
+		finally:
+			conn.close()
 		return affected
 
 
@@ -122,6 +132,7 @@ class TextField(Field):
 
 # model的元类
 class ModelMetaclass(type):
+
 	def __new__(cls, name, bases, attrs):
 		if name == 'Model':
 			return type.__new__(cls, name, bases, attrs)
@@ -183,7 +194,6 @@ class Model(dict, metaclass=ModelMetaclass):
 				value = field.default() if callable(field.default) else field.default
 				logging.debug('using default value for {}: {}'.format(key, str(value)))
 				setattr(self, key, value)
-
 		return value
 
 	@classmethod
