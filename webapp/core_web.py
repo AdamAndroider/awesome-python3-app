@@ -1,4 +1,4 @@
-import logging, asyncio, inspect, os
+import logging, asyncio, inspect, os, functools
 from urllib import parse
 from aiohttp import web
 from webapp.api_error import APIError
@@ -15,6 +15,7 @@ def get(path):
 	'''
 
 	def decorator(func):
+		@functools.wraps(func)
 		def wrapper(*args, **kw):
 			return func(*args, **kw)
 		wrapper.__method__ = 'GET'
@@ -28,6 +29,7 @@ def post(path):
 	'''
 
 	def decorator(func):
+		@functools.wraps(func)
 		def wrapper(*args, **kw):
 			return func(*args, **kw)
 		wrapper.__method__ = 'POST'

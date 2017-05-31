@@ -14,5 +14,3 @@ event_loop.run_until_complete(db_test(event_loop))
 event_loop.close()
 
 
-
-
