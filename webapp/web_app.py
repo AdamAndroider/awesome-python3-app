@@ -3,7 +3,8 @@ from aiohttp import web
 import logging, os, json, time, asyncio
 from jinja2 import Environment, FileSystemLoader
 from webapp import core_web, async_orm
-
+from webapp.config.config import configs
+from webapp.cookie.cookie_manage import COOKIE_NAME, cookie2user
 
 logging.basicConfig(level=logging.INFO)
 
@@ -72,6 +73,24 @@ async def data_factory(app, handler):
 	return parse_data
 
 
+# 自动登录验证
+async def auth_factory(app, hander):
+	async def auth(request):
+		logging.info('check user: {} {}'.format(request.method, request.path))
+		request.__user__ = None
+		cookie_str = request.cookies.get(COOKIE_NAME)
+		if cookie_str:
+			user = await cookie2user(cookie_str)
+			if user:
+				logging.info('set current user: {}'.format(user.email))
+				request.__user__ = user
+		if request.path.startswith('/manage/') and (request.__user__ is None or not request.__user__.admin):
+			return web.HTTPFound('/login')
+		return (await hander(request))
+	return auth
+
+
+# 返回数据
 async def response_factory(app, handler):
 	async def response(request):
 		logging.info('Response handler...')
@@ -95,6 +114,7 @@ async def response_factory(app, handler):
 				resp.content_type = 'application/json;charset=utf-8'
 				return resp
 			else:
+				hr['__user__'] = request.__user__
 				resp = web.Response(body=app['__templating__'].get_template(template).render(**hr).encode('utf-8'))
 				resp.content_type = 'text/html;charset=utf-8'
 				return resp
@@ -127,8 +147,8 @@ def datetime_filter(tm):
 
 
 async def init(loop):
-	await async_orm.create_pool(loop=loop, user='root', password='root123', db='awesome')
-	app = web.Application(loop=loop, middlewares=[logger_factory, response_factory])
+	await async_orm.create_pool(loop=loop, **configs.db)
+	app = web.Application(loop=loop, middlewares=[logger_factory, auth_factory, response_factory])
 	init_jinja2(app, filters=dict(datetime=datetime_filter))
 	core_web.add_routes(app, 'handlers')
 	core_web.add_static(app)
